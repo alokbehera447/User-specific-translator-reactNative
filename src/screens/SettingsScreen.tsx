@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,73 @@ import {
   StyleSheet,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import AuthService from '../services/authService';
 
-const SettingsScreen = () => {
+const SettingsScreen = ({ navigation }: any) => {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
   const [audioEnhancement, setAudioEnhancement] = useState(true);
   const [autoTranslate, setAutoTranslate] = useState(false);
   const [saveHistory, setSaveHistory] = useState(true);
   const [notifications, setNotifications] = useState(true);
+
+  // -----------------------------
+  // Fetch Current User
+  // -----------------------------
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const userData = await AuthService.getCurrentUser();
+        setUser(userData);
+      } catch (err) {
+        console.log('Error fetching user:', err);
+        Alert.alert('Session Expired', 'Please login again.', [
+          {
+            text: 'OK',
+            onPress: async () => {
+              await AuthService.logout();
+              navigation.replace('Login');
+            },
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, []);
+
+  // -----------------------------
+  // Handle Logout
+  // -----------------------------
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout',
+        style: 'destructive',
+        onPress: async () => {
+          await AuthService.logout();
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+
+        },
+      },
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#0ea5e9" />
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -22,11 +82,12 @@ const SettingsScreen = () => {
         <View style={styles.profileAvatar}>
           <Text style={styles.profileAvatarText}>👤</Text>
         </View>
-        <Text style={styles.profileName}>User Account</Text>
-        <Text style={styles.profileEmail}>user@example.com</Text>
+        <Text style={styles.profileName}>{user?.email?.split('@')[0] || 'User'}</Text>
+        <Text style={styles.profileEmail}>{user?.email || 'unknown@example.com'}</Text>
+
         <TouchableOpacity
           style={styles.editButton}
-          onPress={() => Alert.alert('Edit Profile', 'Coming soon')}>
+          onPress={() => Alert.alert('Edit Profile', 'Feature coming soon!')}>
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
@@ -35,77 +96,45 @@ const SettingsScreen = () => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Translation Settings</Text>
 
-        <View style={styles.settingItem}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Audio Enhancement</Text>
-            <Text style={styles.settingDescription}>
-              Improve audio quality before processing
-            </Text>
-          </View>
-          <Switch
-            value={audioEnhancement}
-            onValueChange={setAudioEnhancement}
-            trackColor={{false: '#d1d5db', true: '#7dd3fc'}}
-            thumbColor={audioEnhancement ? '#0ea5e9' : '#f3f4f6'}
-          />
-        </View>
+        <SettingSwitch
+          label="Audio Enhancement"
+          description="Improve audio quality before processing"
+          value={audioEnhancement}
+          onValueChange={setAudioEnhancement}
+        />
 
-        <View style={styles.settingItem}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Auto-Translate</Text>
-            <Text style={styles.settingDescription}>
-              Automatically translate after recording
-            </Text>
-          </View>
-          <Switch
-            value={autoTranslate}
-            onValueChange={setAutoTranslate}
-            trackColor={{false: '#d1d5db', true: '#7dd3fc'}}
-            thumbColor={autoTranslate ? '#0ea5e9' : '#f3f4f6'}
-          />
-        </View>
+        <SettingSwitch
+          label="Auto-Translate"
+          description="Automatically translate after recording"
+          value={autoTranslate}
+          onValueChange={setAutoTranslate}
+        />
 
-        <View style={styles.settingItem}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Save History</Text>
-            <Text style={styles.settingDescription}>
-              Keep translation history on device
-            </Text>
-          </View>
-          <Switch
-            value={saveHistory}
-            onValueChange={setSaveHistory}
-            trackColor={{false: '#d1d5db', true: '#7dd3fc'}}
-            thumbColor={saveHistory ? '#0ea5e9' : '#f3f4f6'}
-          />
-        </View>
+        <SettingSwitch
+          label="Save History"
+          description="Keep translation history on device"
+          value={saveHistory}
+          onValueChange={setSaveHistory}
+        />
       </View>
 
       {/* App Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>App Settings</Text>
 
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('Language', 'Select app language')}>
-          <Text style={styles.menuIcon}>🌍</Text>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuLabel}>App Language</Text>
-            <Text style={styles.menuValue}>English</Text>
-          </View>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
+        <MenuItem
+          icon="🌍"
+          label="App Language"
+          value="English"
+          onPress={() => Alert.alert('Language', 'Select app language (coming soon)')}
+        />
 
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('Theme', 'Select app theme')}>
-          <Text style={styles.menuIcon}>🎨</Text>
-          <View style={styles.menuInfo}>
-            <Text style={styles.menuLabel}>Theme</Text>
-            <Text style={styles.menuValue}>Light</Text>
-          </View>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
+        <MenuItem
+          icon="🎨"
+          label="Theme"
+          value="Light"
+          onPress={() => Alert.alert('Theme', 'Select theme (coming soon)')}
+        />
 
         <View style={styles.menuItem}>
           <Text style={styles.menuIcon}>🔔</Text>
@@ -115,13 +144,13 @@ const SettingsScreen = () => {
           <Switch
             value={notifications}
             onValueChange={setNotifications}
-            trackColor={{false: '#d1d5db', true: '#7dd3fc'}}
+            trackColor={{ false: '#d1d5db', true: '#7dd3fc' }}
             thumbColor={notifications ? '#0ea5e9' : '#f3f4f6'}
           />
         </View>
       </View>
 
-      {/* Storage */}
+      {/* Storage Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Storage</Text>
 
@@ -131,7 +160,7 @@ const SettingsScreen = () => {
             <Text style={styles.storageValue}>125 MB</Text>
           </View>
           <View style={styles.storageBar}>
-            <View style={[styles.storageProgress, {width: '35%'}]} />
+            <View style={[styles.storageProgress, { width: '35%' }]} />
           </View>
         </View>
 
@@ -142,11 +171,12 @@ const SettingsScreen = () => {
               'Clear Cache',
               'Are you sure you want to clear all cached data?',
               [
-                {text: 'Cancel', style: 'cancel'},
+                { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'Clear',
                   style: 'destructive',
-                  onPress: () => Alert.alert('Cleared', 'Cache cleared successfully'),
+                  onPress: () =>
+                    Alert.alert('Cleared', 'Cache cleared successfully!'),
                 },
               ],
             )
@@ -155,52 +185,18 @@ const SettingsScreen = () => {
         </TouchableOpacity>
       </View>
 
-      {/* Support */}
+      {/* Support & Info */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Support & Info</Text>
 
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('Help', 'Help center coming soon')}>
-          <Text style={styles.menuIcon}>❓</Text>
-          <Text style={styles.menuLabel}>Help Center</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('Privacy', 'Privacy policy')}>
-          <Text style={styles.menuIcon}>🔒</Text>
-          <Text style={styles.menuLabel}>Privacy Policy</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('Terms', 'Terms of service')}>
-          <Text style={styles.menuIcon}>📄</Text>
-          <Text style={styles.menuLabel}>Terms of Service</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => Alert.alert('About', 'User Translator v1.0.0')}>
-          <Text style={styles.menuIcon}>ℹ️</Text>
-          <Text style={styles.menuLabel}>About</Text>
-          <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
+        <MenuItem icon="❓" label="Help Center" onPress={() => Alert.alert('Help', 'Coming soon')} />
+        <MenuItem icon="🔒" label="Privacy Policy" onPress={() => Alert.alert('Privacy Policy')} />
+        <MenuItem icon="📄" label="Terms of Service" onPress={() => Alert.alert('Terms of Service')} />
+        <MenuItem icon="ℹ️" label="About" onPress={() => Alert.alert('User Translator v1.0.0')} />
       </View>
 
       {/* Logout */}
-      <TouchableOpacity
-        style={styles.logoutButton}
-        onPress={() =>
-          Alert.alert('Logout', 'Are you sure you want to logout?', [
-            {text: 'Cancel', style: 'cancel'},
-            {text: 'Logout', style: 'destructive'},
-          ])
-        }>
+      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutButtonText}>🚪 Logout</Text>
       </TouchableOpacity>
 
@@ -212,6 +208,38 @@ const SettingsScreen = () => {
     </ScrollView>
   );
 };
+
+// -----------------------------
+// Reusable Setting Switch
+// -----------------------------
+const SettingSwitch = ({ label, description, value, onValueChange }: any) => (
+  <View style={styles.settingItem}>
+    <View style={styles.settingInfo}>
+      <Text style={styles.settingLabel}>{label}</Text>
+      <Text style={styles.settingDescription}>{description}</Text>
+    </View>
+    <Switch
+      value={value}
+      onValueChange={onValueChange}
+      trackColor={{ false: '#d1d5db', true: '#7dd3fc' }}
+      thumbColor={value ? '#0ea5e9' : '#f3f4f6'}
+    />
+  </View>
+);
+
+// -----------------------------
+// Reusable Menu Item
+// -----------------------------
+const MenuItem = ({ icon, label, value, onPress }: any) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+    <Text style={styles.menuIcon}>{icon}</Text>
+    <View style={styles.menuInfo}>
+      <Text style={styles.menuLabel}>{label}</Text>
+      {value && <Text style={styles.menuValue}>{value}</Text>}
+    </View>
+    <Text style={styles.menuArrow}>›</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -276,15 +304,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
-  settingInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
+  settingInfo: { flex: 1, marginRight: 12 },
   settingLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -303,7 +328,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
@@ -312,9 +337,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     marginRight: 12,
   },
-  menuInfo: {
-    flex: 1,
-  },
+  menuInfo: { flex: 1 },
   menuLabel: {
     fontSize: 14,
     fontWeight: '600',
@@ -325,17 +348,14 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 2,
   },
-  menuArrow: {
-    fontSize: 24,
-    color: '#9ca3af',
-  },
+  menuArrow: { fontSize: 24, color: '#9ca3af' },
   storageCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 1},
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
@@ -345,25 +365,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 8,
   },
-  storageLabel: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  storageValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
+  storageLabel: { fontSize: 14, color: '#6b7280' },
+  storageValue: { fontSize: 14, fontWeight: '600', color: '#1f2937' },
   storageBar: {
     height: 8,
     backgroundColor: '#e5e7eb',
     borderRadius: 4,
     overflow: 'hidden',
   },
-  storageProgress: {
-    height: '100%',
-    backgroundColor: '#0ea5e9',
-  },
+  storageProgress: { height: '100%', backgroundColor: '#0ea5e9' },
   dangerButton: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
@@ -384,7 +394,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
@@ -406,4 +416,3 @@ const styles = StyleSheet.create({
 });
 
 export default SettingsScreen;
-

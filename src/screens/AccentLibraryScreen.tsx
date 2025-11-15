@@ -1,424 +1,484 @@
-import React, {useState} from 'react';
+// AccentLibraryScreen.tsx
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
+  PermissionsAndroid,
+  Platform,
+  TextInput,
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  ScrollView,
 } from 'react-native';
 
-const AccentLibraryScreen = () => {
-  const [accents, setAccents] = useState([
-    {
-      id: 1,
-      name: 'Professional Voice',
-      language: 'English',
-      duration: '5s',
-      date: '2024-01-15',
-    },
-    {
-      id: 2,
-      name: 'Spanish Accent',
-      language: 'Spanish',
-      duration: '8s',
-      date: '2024-01-14',
-    },
-    {
-      id: 3,
-      name: 'French Voice',
-      language: 'French',
-      duration: '6s',
-      date: '2024-01-13',
-    },
-  ]);
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import Sound from 'react-native-sound';
+import RNFetchBlob from 'rn-fetch-blob';
+import Modal from 'react-native-modal';
 
+import { getSavedAccents, deleteAccent, saveAccent } from '../services/accentApi';
+import api from '../services/api';
+
+const audioRecorderPlayer = new AudioRecorderPlayer();
+
+/* Languages (Option B) */
+const LANGUAGES = [
+  { label: 'English', code: 'eng_Latn', emoji: '🇬🇧' },
+  { label: 'Hindi', code: 'hin_Deva', emoji: '🇮🇳' },
+  { label: 'Bengali', code: 'ben_Beng', emoji: '🇧🇩' },
+  { label: 'Tamil', code: 'tam_Taml', emoji: '🇮🇳' },
+  { label: 'Telugu', code: 'tel_Telu', emoji: '🇮🇳' },
+  { label: 'Kannada', code: 'kan_Knda', emoji: '🇮🇳' },
+  { label: 'Malayalam', code: 'mal_Mlym', emoji: '🇮🇳' },
+  { label: 'Punjabi', code: 'pan_Guru', emoji: '🇮🇳' },
+  { label: 'Urdu', code: 'urd_Arab', emoji: '🇵🇰' },
+  { label: 'Marathi', code: 'mar_Deva', emoji: '🇮🇳' },
+  { label: 'Gujarati', code: 'guj_Gujr', emoji: '🇮🇳' },
+  { label: 'French', code: 'fra_Latn', emoji: '🇫🇷' },
+  { label: 'Spanish', code: 'spa_Latn', emoji: '🇪🇸' },
+  { label: 'German', code: 'deu_Latn', emoji: '🇩🇪' },
+  { label: 'Portuguese', code: 'por_Latn', emoji: '🇵🇹' },
+  { label: 'Italian', code: 'ita_Latn', emoji: '🇮🇹' },
+  { label: 'Chinese (Simplified)', code: 'zho_Hans', emoji: '🇨🇳' },
+  { label: 'Japanese', code: 'jpn_Jpan', emoji: '🇯🇵' },
+  { label: 'Korean', code: 'kor_Hang', emoji: '🇰🇷' },
+  { label: 'Arabic', code: 'arb_Arab', emoji: '🇸🇦' },
+  { label: 'Russian', code: 'rus_Cyrl', emoji: '🇷🇺' },
+  { label: 'Dutch', code: 'nld_Latn', emoji: '🇳🇱' },
+];
+
+const AccentLibraryScreen: React.FC = () => {
+  const [accents, setAccents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  const [langModalVisible, setLangModalVisible] = useState(false);
+
+  const [recordedFile, setRecordedFile] = useState<string>('');
+  const [accentName, setAccentName] = useState<string>('');
+  const [selectedLang, setSelectedLang] = useState(LANGUAGES[0]);
+
+  const isMounted = useRef(true);
+
+  /* Load accents on mount */
+  useEffect(() => {
+    isMounted.current = true;
+    loadAccents();
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const loadAccents = async () => {
+    try {
+      setLoading(true);
+      const res = await getSavedAccents();
+      if (isMounted.current) setAccents(Array.isArray(res) ? res : []);
+    } catch (err) {
+      console.error('Load accents error', err);
+      Alert.alert('Error', 'Could not load accents');
+    } finally {
+      if (isMounted.current) setLoading(false);
+    }
+  };
+
+  /* Request microphone permission (Android) */
+  const requestMic = async () => {
+    if (Platform.OS !== 'android') return true;
+    try {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
+        title: 'Microphone Permission',
+        message: 'We need access to your microphone to record accents.',
+        buttonPositive: 'Allow',
+      });
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (err) {
+      console.warn('requestMic error', err);
+      return false;
+    }
+  };
+
+  /* Start / Stop Recording */
+  const handleRecord = async () => {
+    if (!recording) {
+      const ok = await requestMic();
+      if (!ok) return Alert.alert('Permission Required');
+
+      const path = `${RNFetchBlob.fs.dirs.CacheDir}/accent.wav`;
+      console.log('🎤 Start Recording:', path);
+
+      try {
+        await audioRecorderPlayer.startRecorder(path);
+        setRecordedFile(path); // store right away (Android needs this)
+        setRecording(true);
+      } catch (err) {
+        console.error('startRecorder error', err);
+        Alert.alert('Error', 'Cannot start recorder');
+      }
+    } else {
+      try {
+        await audioRecorderPlayer.stopRecorder();
+        audioRecorderPlayer.removeRecordBackListener();
+        console.log('🎤 Recording Stopped');
+        console.log('🎤 Final File:', recordedFile);
+        setRecording(false);
+
+        if (recordedFile) setSaveModalVisible(true);
+        else Alert.alert('Error', 'Recording failed');
+      } catch (err) {
+        console.error('stopRecorder error', err);
+        Alert.alert('Error', 'Failed to stop recording');
+      }
+    }
+  };
+
+  /* Save Accent */
+  const handleSaveAccent = async () => {
+    if (!accentName.trim()) {
+      return Alert.alert('Error', 'Enter an accent name');
+    }
+
+    try {
+      setLoading(true);
+      console.log('Uploading Accent:', { recordedFile, accentName, lang: selectedLang.code });
+
+      const result = await saveAccent(recordedFile, accentName, selectedLang.code);
+      console.log('SAVE RESULT:', result);
+
+      setSaveModalVisible(false);
+      setAccentName('');
+      setRecordedFile('');
+
+      await loadAccents();
+
+      Alert.alert('Success', 'Accent saved');
+    } catch (err: any) {
+      console.error('SAVE ACCENT ERROR:', err);
+      Alert.alert('Error', err.message || 'Failed to save accent');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* Play Accent Audio */
   const handlePlay = (accent: any) => {
-    Alert.alert('Playing', `Playing ${accent.name}...`);
+    const audioUrl = `${api.defaults.baseURL}/${accent.file_path}`;
+    const s = new Sound(audioUrl, null, (err) => {
+      if (err) {
+        console.error('Sound load error', err);
+        return Alert.alert('Playback Error', 'Unable to load audio');
+      }
+      s.play(() => s.release());
+    });
   };
 
+  /* Delete Accent */
   const handleDelete = (id: number) => {
-    Alert.alert(
-      'Delete Accent',
-      'Are you sure you want to delete this accent?',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setAccents(accents.filter(accent => accent.id !== id));
-            Alert.alert('Deleted', 'Accent removed from library');
-          },
+    Alert.alert('Delete?', 'This cannot be undone.', [
+      { text: 'Cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setLoading(true);
+            await deleteAccent(id);
+            await loadAccents();
+          } catch (err) {
+            console.error('deleteAccent error', err);
+            Alert.alert('Error', 'Failed to delete accent');
+          } finally {
+            setLoading(false);
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  const handleAddNew = () => {
-    Alert.alert('Add Accent', 'Record a new voice sample');
-  };
-
-  return (
-    <ScrollView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>Your Voice Library</Text>
-          <Text style={styles.headerSubtitle}>
-            Manage your saved accent profiles
-          </Text>
-        </View>
-        <View style={styles.headerStats}>
-          <Text style={styles.statNumber}>{accents.length}</Text>
-          <Text style={styles.statLabel}>Accents</Text>
-        </View>
+  /* Render accent card */
+  const renderAccentItem = ({ item }: any) => (
+    <View style={styles.card}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle}>{item.name}</Text>
+        <Text style={styles.cardSubtitle}>{item.language ?? item.language_code ?? 'Unknown'}</Text>
       </View>
 
-      {/* Add New Button */}
-      <TouchableOpacity style={styles.addButton} onPress={handleAddNew}>
-        <Text style={styles.addButtonIcon}>+</Text>
-        <Text style={styles.addButtonText}>Add New Accent</Text>
+      <TouchableOpacity style={styles.iconButton} onPress={() => handlePlay(item)}>
+        <Text style={styles.iconText}>▶️</Text>
       </TouchableOpacity>
 
-      {/* Accents List */}
-      <View style={styles.accentsContainer}>
-        <Text style={styles.sectionTitle}>Saved Accents</Text>
+      <TouchableOpacity style={[styles.iconButton, { marginLeft: 8 }]} onPress={() => handleDelete(item.id)}>
+        <Text style={styles.iconText}>🗑️</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
-        {accents.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>🎭</Text>
-            <Text style={styles.emptyTitle}>No accents saved yet</Text>
-            <Text style={styles.emptyText}>
-              Record your first voice sample to get started
-            </Text>
-          </View>
-        ) : (
-          accents.map(accent => (
-            <View key={accent.id} style={styles.accentCard}>
-              <View style={styles.accentIcon}>
-                <Text style={styles.accentIconText}>🎭</Text>
-              </View>
+  /* HEADER + RECORD CONTROLS inside FlatList */
+  const renderHeader = () => (
+    <View>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>Your Accent Library</Text>
+          <Text style={styles.subtitle}>Save and reuse voice samples</Text>
+        </View>
 
-              <View style={styles.accentInfo}>
-                <Text style={styles.accentName}>{accent.name}</Text>
-                <Text style={styles.accentDetails}>
-                  {accent.language} • {accent.duration} • {accent.date}
-                </Text>
-              </View>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{accents.length}</Text>
+          <Text style={styles.countLabel}>Accents</Text>
+        </View>
+      </View>
 
-              <View style={styles.accentActions}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handlePlay(accent)}>
-                  <Text style={styles.actionIcon}>▶️</Text>
-                </TouchableOpacity>
+      <View style={styles.controlsRow}>
+        <TouchableOpacity style={[styles.recordBtn, recording ? styles.recordBtnActive : null]} onPress={handleRecord}>
+          <Text style={styles.recordBtnIcon}>{recording ? '⏸' : '🎙️'}</Text>
+          <Text style={styles.recordBtnText}>{recording ? 'Stop' : 'Record Accent'}</Text>
+        </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleDelete(accent.id)}>
-                  <Text style={styles.actionIcon}>🗑️</Text>
-                </TouchableOpacity>
-              </View>
+        <TouchableOpacity style={styles.tipsBtn} onPress={() => Alert.alert('Tips', 'Record clear voice (5–12s)')}>
+          <Text style={styles.tipsText}>💡 Tips</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && <ActivityIndicator size="large" color="#0ea5e9" style={{ marginVertical: 10 }} />}
+
+      <Text style={styles.sectionTitle}>Saved Accents</Text>
+
+      {accents.length === 0 && (
+        <View style={styles.empty}>
+          <Text style={styles.emptyEmoji}>🎭</Text>
+          <Text style={styles.emptyTitle}>No accents yet</Text>
+          <Text style={styles.emptyText}>Record your first voice sample</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <FlatList
+        data={accents}
+        keyExtractor={(i) => String(i.id)}
+        renderItem={renderAccentItem}
+        ListHeaderComponent={renderHeader}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+      />
+
+      {/* SAVE MODAL */}
+      <Modal isVisible={saveModalVisible} onBackdropPress={() => setSaveModalVisible(false)} avoidKeyboard>
+        <View style={styles.modalBox}>
+          <Text style={styles.modalHeading}>Save Accent</Text>
+
+          <TextInput placeholder="Accent name" value={accentName} onChangeText={setAccentName} style={styles.input} placeholderTextColor="#6b7280" />
+
+          <TouchableOpacity style={styles.langPicker} onPress={() => setLangModalVisible(true)}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.langEmoji}>{selectedLang.emoji}</Text>
+              <Text style={styles.langLabel}>{selectedLang.label}</Text>
             </View>
-          ))
-        )}
-      </View>
+            <Text style={styles.langChevron}>⌄</Text>
+          </TouchableOpacity>
 
-      {/* Info Card */}
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>📚 What is Accent Library?</Text>
-        <Text style={styles.infoText}>
-          Save voice samples to use for translation. The system will clone your
-          voice and apply it to translated audio, making it sound more natural
-          and personal.
-        </Text>
-        <View style={styles.infoTips}>
-          <Text style={styles.infoTipTitle}>Tips for best results:</Text>
-          <Text style={styles.infoTip}>
-            • Record 5-10 seconds of clear speech
-          </Text>
-          <Text style={styles.infoTip}>
-            • Use a quiet environment
-          </Text>
-          <Text style={styles.infoTip}>• Speak naturally and clearly</Text>
-          <Text style={styles.infoTip}>
-            • Record in the same language as the accent
-          </Text>
-        </View>
-      </View>
+          <View style={{ flexDirection: 'row', marginTop: 16 }}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveAccent}>
+              <Text style={styles.saveBtnText}>Save</Text>
+            </TouchableOpacity>
 
-      {/* Usage Guide */}
-      <View style={styles.guideContainer}>
-        <Text style={styles.guideTitle}>How to Use</Text>
-
-        <View style={styles.guideStep}>
-          <View style={styles.guideStepNumber}>
-            <Text style={styles.guideStepNumberText}>1</Text>
-          </View>
-          <View style={styles.guideStepContent}>
-            <Text style={styles.guideStepTitle}>Record Sample</Text>
-            <Text style={styles.guideStepText}>
-              Tap "Add New Accent" and record a voice sample
-            </Text>
+            <TouchableOpacity style={styles.cancelBtnModal} onPress={() => setSaveModalVisible(false)}>
+              <Text style={styles.cancelModalText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </View>
+      </Modal>
 
-        <View style={styles.guideStep}>
-          <View style={styles.guideStepNumber}>
-            <Text style={styles.guideStepNumberText}>2</Text>
-          </View>
-          <View style={styles.guideStepContent}>
-            <Text style={styles.guideStepTitle}>Name Your Accent</Text>
-            <Text style={styles.guideStepText}>
-              Give it a descriptive name for easy identification
-            </Text>
-          </View>
-        </View>
+      {/* LANGUAGE MODAL */}
+      <Modal isVisible={langModalVisible} onBackdropPress={() => setLangModalVisible(false)}>
+        <View style={styles.langModal}>
+          <Text style={styles.modalHeadingSmall}>Choose Language</Text>
 
-        <View style={styles.guideStep}>
-          <View style={styles.guideStepNumber}>
-            <Text style={styles.guideStepNumberText}>3</Text>
-          </View>
-          <View style={styles.guideStepContent}>
-            <Text style={styles.guideStepTitle}>Use in Translation</Text>
-            <Text style={styles.guideStepText}>
-              Select the accent when translating to clone your voice
-            </Text>
-          </View>
+          <FlatList
+            data={LANGUAGES}
+            keyExtractor={(l) => l.code}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.langOptionRow}
+                onPress={() => {
+                  setSelectedLang(item);
+                  setLangModalVisible(false);
+                }}>
+                <Text style={styles.langEmoji}>{item.emoji}</Text>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.langName}>{item.label}</Text>
+                  <Text style={styles.langCode}>{item.code}</Text>
+                </View>
+                <Text style={styles.selectArrow}>›</Text>
+              </TouchableOpacity>
+            )}
+            ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#eef2f6' }} />}
+            style={{ maxHeight: 420 }}
+          />
+
+          <TouchableOpacity style={[styles.cancelBtnModal, { alignSelf: 'center', marginTop: 8 }]} onPress={() => setLangModalVisible(false)}>
+            <Text style={styles.cancelModalText}>Close</Text>
+          </TouchableOpacity>
         </View>
-      </View>
-    </ScrollView>
+      </Modal>
+    </KeyboardAvoidingView>
   );
 };
 
+/* ---------------- STYLES ---------------- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
+  container: { flex: 1, backgroundColor: '#f9fafb' },
   header: {
-    backgroundColor: '#0ea5e9',
-    padding: 20,
+    padding: 16,
+    paddingTop: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerInfo: {
+  title: { fontSize: 20, fontWeight: '800', color: '#0f172a' },
+  subtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  countBadge: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    elevation: 2,
+  },
+  countText: { fontSize: 18, fontWeight: '800', color: '#0ea5e9' },
+  countLabel: { fontSize: 11, color: '#6b7280' },
+
+  controlsRow: { paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  recordBtn: {
     flex: 1,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#ffffff',
-    opacity: 0.9,
-  },
-  headerStats: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: '#0ea5e9',
+    paddingVertical: 14,
     borderRadius: 12,
-    padding: 16,
+    marginVertical: 12,
     alignItems: 'center',
-    minWidth: 80,
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#ffffff',
-    opacity: 0.9,
-  },
-  addButton: {
-    backgroundColor: '#10b981',
-    margin: 16,
-    padding: 16,
-    borderRadius: 12,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    gap: 10,
     elevation: 3,
   },
-  addButtonIcon: {
-    fontSize: 24,
-    color: '#ffffff',
-    marginRight: 8,
+  recordBtnActive: { backgroundColor: '#ef4444' },
+  recordBtnIcon: { fontSize: 20, marginRight: 8 },
+  recordBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+
+  tipsBtn: {
+    marginLeft: 12,
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    elevation: 2,
   },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  accentsContainer: {
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
-  },
-  accentCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  tipsText: { color: '#0ea5e9', fontWeight: '700' },
+
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginHorizontal: 16, marginTop: 8, color: '#0f172a' },
+
+  empty: { alignItems: 'center', padding: 24 },
+  emptyEmoji: { fontSize: 46, marginBottom: 8 },
+  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#0f172a' },
+  emptyText: { fontSize: 13, color: '#6b7280', marginTop: 6, textAlign: 'center' },
+
+  card: {
     flexDirection: 'row',
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    padding: 14,
+    borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
-  accentIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  cardTitle: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  cardSubtitle: { fontSize: 12, color: '#6b7280', marginTop: 4 },
+
+  cardActions: { flexDirection: 'row', alignItems: 'center' },
+
+  iconButton: {
     backgroundColor: '#f3f4f6',
+    width: 44,
+    height: 44,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    elevation: 1,
   },
-  accentIconText: {
-    fontSize: 24,
-  },
-  accentInfo: {
-    flex: 1,
-  },
-  accentName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  accentDetails: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  accentActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionIcon: {
-    fontSize: 16,
-  },
-  emptyState: {
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
+  iconText: { fontSize: 18 },
+
   infoCard: {
-    backgroundColor: '#e0f2fe',
     margin: 16,
-    padding: 16,
+    backgroundColor: '#eef8ff',
+    padding: 12,
     borderRadius: 12,
     borderLeftWidth: 4,
     borderLeftColor: '#0ea5e9',
   },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#0c4a6e',
-    marginBottom: 8,
+  infoTitle: { fontSize: 14, fontWeight: '800', color: '#0c4a6e' },
+  infoText: { fontSize: 13, color: '#075985', marginTop: 6 },
+
+  /* Modal styles */
+  modalBox: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
   },
-  infoText: {
-    fontSize: 14,
-    color: '#075985',
-    lineHeight: 20,
-    marginBottom: 12,
+  modalHeading: { fontSize: 18, fontWeight: '900', marginBottom: 12, color: '#0f172a' },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e6eef6',
+    backgroundColor: '#fbfeff',
+    padding: 12,
+    borderRadius: 10,
+    fontSize: 15,
+    color: '#0f172a',
   },
-  infoTips: {
-    marginTop: 8,
-  },
-  infoTipTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#0c4a6e',
-    marginBottom: 4,
-  },
-  infoTip: {
-    fontSize: 12,
-    color: '#075985',
-    marginBottom: 2,
-  },
-  guideContainer: {
-    margin: 16,
-    marginTop: 0,
-  },
-  guideTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 16,
-  },
-  guideStep: {
+  langPicker: {
     flexDirection: 'row',
-    marginBottom: 16,
-  },
-  guideStepNumber: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#0ea5e9',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#eef2f6',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
   },
-  guideStepNumberText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  guideStepContent: {
+  langEmoji: { fontSize: 22, marginRight: 10 },
+  langLabel: { fontSize: 16, fontWeight: '700', color: '#0f172a' },
+  langChevron: { fontSize: 20, color: '#6b7280' },
+
+  saveBtn: {
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     flex: 1,
+    alignItems: 'center',
   },
-  guideStepTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 2,
+  saveBtnText: { color: '#fff', fontWeight: '800' },
+
+  cancelBtnModal: { paddingVertical: 12, paddingHorizontal: 12, marginLeft: 12 },
+  cancelModalText: { color: '#374151', fontWeight: '700' },
+
+  /* language modal */
+  langModal: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
   },
-  guideStepText: {
-    fontSize: 12,
-    color: '#6b7280',
-    lineHeight: 18,
-  },
+  modalHeadingSmall: { fontSize: 16, fontWeight: '800', marginBottom: 8 },
+  langOptionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 },
+  langName: { fontSize: 16, fontWeight: '700' },
+  langCode: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  selectArrow: { fontSize: 18, color: '#cbd5e1' },
 });
-
 export default AccentLibraryScreen;
-
