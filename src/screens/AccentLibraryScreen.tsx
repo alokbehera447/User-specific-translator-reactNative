@@ -50,6 +50,15 @@ const LANGUAGES = [
   { label: 'Russian', code: 'rus_Cyrl', emoji: '🇷🇺' },
   { label: 'Dutch', code: 'nld_Latn', emoji: '🇳🇱' },
 ];
+const getLanguageName = (code) => {
+  const langMap = {
+    'en': 'English', 'hi': 'Hindi', 'es': 'Spanish', 'fr': 'French',
+    'de': 'German', 'ja': 'Japanese', 'ko': 'Korean', 'zh': 'Chinese',
+    'ar': 'Arabic', 'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian',
+    'hin_Deva': 'Hindi', 'eng_Latn': 'English', 'spa_Latn': 'Spanish'
+  };
+  return langMap[code] || code;
+};
 
 const AccentLibraryScreen: React.FC = () => {
   const [accents, setAccents] = useState<any[]>([]);
@@ -156,7 +165,7 @@ const AccentLibraryScreen: React.FC = () => {
 
       await loadAccents();
 
-      Alert.alert('Success', 'Accent saved');
+      // Alert.alert('Success', 'Accent saved');
     } catch (err: any) {
       console.error('SAVE ACCENT ERROR:', err);
       Alert.alert('Error', err.message || 'Failed to save accent');
@@ -205,7 +214,9 @@ const AccentLibraryScreen: React.FC = () => {
     <View style={styles.card}>
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{item.name}</Text>
-        <Text style={styles.cardSubtitle}>{item.language ?? item.language_code ?? 'Unknown'}</Text>
+        <Text style={styles.cardSubtitle}>
+          {getLanguageName(item.language ?? item.language_code ?? 'Unknown')}
+        </Text>
       </View>
 
       <TouchableOpacity style={styles.iconButton} onPress={() => handlePlay(item)}>
@@ -223,20 +234,20 @@ const AccentLibraryScreen: React.FC = () => {
     <View>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Your Accent Library</Text>
+          <Text style={styles.title}>Your Voice Library</Text>
           <Text style={styles.subtitle}>Save and reuse voice samples</Text>
         </View>
 
         <View style={styles.countBadge}>
           <Text style={styles.countText}>{accents.length}</Text>
-          <Text style={styles.countLabel}>Accents</Text>
+          <Text style={styles.countLabel}>Voices</Text>
         </View>
       </View>
 
       <View style={styles.controlsRow}>
         <TouchableOpacity style={[styles.recordBtn, recording ? styles.recordBtnActive : null]} onPress={handleRecord}>
           <Text style={styles.recordBtnIcon}>{recording ? '⏸' : '🎙️'}</Text>
-          <Text style={styles.recordBtnText}>{recording ? 'Stop' : 'Record Accent'}</Text>
+          <Text style={styles.recordBtnText}>{recording ? 'Stop' : 'Record Voice'}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.tipsBtn} onPress={() => Alert.alert('Tips', 'Record clear voice (5–12s)')}>
@@ -246,7 +257,7 @@ const AccentLibraryScreen: React.FC = () => {
 
       {loading && <ActivityIndicator size="large" color="#0ea5e9" style={{ marginVertical: 10 }} />}
 
-      <Text style={styles.sectionTitle}>Saved Accents</Text>
+      <Text style={styles.sectionTitle}>Saved Voices</Text>
 
       {accents.length === 0 && (
         <View style={styles.empty}>
@@ -272,9 +283,9 @@ const AccentLibraryScreen: React.FC = () => {
       {/* SAVE MODAL */}
       <Modal isVisible={saveModalVisible} onBackdropPress={() => setSaveModalVisible(false)} avoidKeyboard>
         <View style={styles.modalBox}>
-          <Text style={styles.modalHeading}>Save Accent</Text>
+          <Text style={styles.modalHeading}>Save Voice</Text>
 
-          <TextInput placeholder="Accent name" value={accentName} onChangeText={setAccentName} style={styles.input} placeholderTextColor="#6b7280" />
+          <TextInput placeholder="Voice name" value={accentName} onChangeText={setAccentName} style={styles.input} placeholderTextColor="#6b7280" />
 
           <TouchableOpacity style={styles.langPicker} onPress={() => setLangModalVisible(true)}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

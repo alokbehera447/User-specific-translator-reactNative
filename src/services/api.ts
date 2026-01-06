@@ -14,7 +14,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const BASE_URL = 'http://10.0.2.2:8000'; // ✅ Android Emulator
 // const BASE_URL = 'http://127.0.0.1:8000'; // ✅ iOS Simulator
 // const BASE_URL = 'http://192.168.0.115:8000'; // ✅ Physical Device (replace with your IP)
+// const BASE_URL = 'https://yourtranslator.loca.lt';
 const BASE_URL = 'http://192.168.0.147:8000';
+// const BASE_URL = 'http://89.221.67.134:8000';
+// const BASE_URL = 'https://unstupidly-mucilaginously-glen.ngrok-free.dev';
 
 
 // =========================
